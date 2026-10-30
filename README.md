@@ -126,8 +126,7 @@ Two claims worth reading carefully:
 .
 ├── scripts/                  
 ├── index.qmd                 
-├── _quarto.yml              
-├── .github/workflows/        
+├── _quarto.yml                     
 └── README.md
 ```
 
