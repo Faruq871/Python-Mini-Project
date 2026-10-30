@@ -1,0 +1,203 @@
+---
+title: "Python Mini Projects Collection"
+subtitle: "Logic, data structures, and complexity analysis"
+---
+
+## Scope and assumptions
+
+Six small command-line programs, each analysed for control flow, data structures,
+and asymptotic cost.
+
+**Model assumptions.** State these explicitly, otherwise Big-O claims are ambiguous:
+
+- RAM model with fixed-width (IEEE-754 double) arithmetic treated as $O(1)$.
+  Arbitrary-precision arithmetic would make cost depend on operand bit-length.
+- `dict` lookup/insert is $O(1)$ **on average**; the worst case is $O(m)$ for $m$
+  colliding keys. All claims below are average-case unless stated otherwise.
+- Interactive input and terminal output are excluded. In practice, waiting for
+  the user dominates wall-clock time by orders of magnitude, so these bounds
+  describe the computation only.
+
+**Notation**
+
+| Symbol | Meaning |
+|--------|---------|
+| $U$ | Unique line items in a cart |
+| $K$ | Number of valid guesses in a game |
+| $n$ | Size of the guessing range, $high - low + 1$ |
+| $L$ | Requested password length |
+| $R$ | Rounds played |
+
+## Summary
+
+| Project | Key data structure | Time | Space |
+|---|---|---|---|
+| Calculator | `dict` dispatch table | $O(1)$ | $O(1)$ |
+| Cash Register | `dict` menu + `dict` cart | $O(U)$ | $O(U)$ |
+| Guess the Number | scalars | $O(K)$ | $O(1)$ |
+| Password Generator | `list[str]` pools, `list` buffer | $O(L)$ | $O(L)$ |
+| Unit Converter | `dict` factor tables | $O(1)$ | $O(1)$ |
+| Rock–Paper–Scissors | `dict` rule map | $O(1)$ / round, $O(R)$ / session | $O(1)$ |
+
+## 1. Calculator
+
+**Logic.** Parse two operands and one operator, dispatch through a dictionary of
+functions from the `operator` module, and handle two failure modes: unsupported
+operator (`ValueError`) and division by zero (`ZeroDivisionError`).
+
+**Data structures.** `dict[str, Callable]` mapping symbol → function; `float`
+operands. The dispatch table replaces an `if/elif` chain: both are $O(1)$ here
+because the operator set is fixed, but the table separates the mapping from the
+control flow and makes adding an operator a one-line change.
+
+**Complexity.** Time $O(1)$, space $O(1)$. No quantity in the program scales with
+input size — the input is a fixed number of values, not a collection.
+
+**Caveat.** Floating-point results are not exact decimals: `0.1 + 0.2` yields
+`0.30000000000000004`. This is inherent to binary floating point, not a bug in the
+dispatch logic.
+
+## 2. Cash Register
+
+**Logic.** Print the menu, then loop: read an item name, validate membership,
+read a positive quantity, and merge it into the cart. On checkout, sum
+`price × quantity` over line items and collect payment until it covers the total,
+then compute change.
+
+**Data structures.**
+
+- `MENU: dict[str, int]` — name → price in cents; average $O(1)$ membership test
+  and lookup.
+- `cart: dict[str, int]` — name → accumulated quantity. Keying by item name
+  merges duplicates, so the cart grows with *distinct* items, not with the number
+  of input events.
+- Integer cents for all money. `Decimal` is used only at the input/output
+  boundary.
+
+**Complexity.** Let $U$ be the number of distinct items.
+
+- Each add: $O(1)$ average.
+- Checkout total and receipt: $O(U)$.
+- Session with $E$ input events: $O(E + U) = O(E)$, since $U \le E$.
+- Space: $O(U)$ for the cart; the menu is a fixed constant.
+
+**Why integer cents.** Binary floating point cannot represent most decimal
+fractions exactly, so summing float prices accumulates error and can produce
+off-by-one-cent totals. Integer cents make addition and multiplication exact.
+`Decimal` parses user input without going through a lossy float conversion.
+
+## 3. Guess the Number
+
+**Logic.** Sample a uniform target with `random.randint`, then loop: validate
+that the guess is an integer inside the range, compare, and emit higher/lower
+feedback until correct. Invalid input does not increment the attempt counter.
+
+**Data structures.** Two integers and a counter. Nothing is stored per guess, so
+space is constant regardless of game length.
+
+**Complexity.**
+
+- Time: $O(K)$ for $K$ valid guesses, at $O(1)$ per guess.
+- Space: $O(1)$.
+
+**Important distinction.** $K$ is determined by the *player*, not by the program.
+The loop has no attempt cap, so there is **no finite worst-case bound** on $K$ — a
+player may repeat the same wrong guess indefinitely.
+
+- Optimal play (binary search) gives $K \le \lceil \log_2 n \rceil$, i.e. 7 guesses
+  for $n = 100$.
+- Sequential play gives $K$ up to $n$.
+- Random guessing without memory has unbounded expectation.
+
+$O(\log n)$ is therefore a property of the *binary-search strategy*, not of this
+program. Presenting it as the program's complexity would be incorrect.
+
+## 4. Password Generator
+
+**Logic.** Build the enabled character classes, require
+$L \ge$ (number of classes), draw one character from each class to guarantee
+coverage, fill the remaining $L - c$ positions uniformly from the combined
+alphabet, then apply a Fisher–Yates shuffle so the guaranteed characters are not
+front-loaded.
+
+**Data structures.** `list[str]` of class strings; a `list[str]` character buffer
+of length $L$; the joined result is an immutable `str`. A list is used because
+`str` is immutable — repeated string concatenation in a loop would be $O(L^2)$ in
+the general case.
+
+**Complexity.** With the alphabet size treated as a constant:
+
+- Time: $O(L)$ — $L$ draws plus an $O(L)$ shuffle plus an $O(L)$ join.
+- Space: $O(L)$ — the buffer and the returned string.
+
+**Security notes.**
+
+- `secrets` draws from the OS CSPRNG. `random` uses Mersenne Twister, whose
+  internal state can be reconstructed from observed output; it must never be used
+  for credentials.
+- `secrets.SystemRandom().shuffle` is used rather than `random.shuffle` for the
+  same reason.
+- Reported entropy $L \cdot \log_2 |A|$ is an **upper bound**. The
+  one-per-class constraint makes the output distribution slightly non-uniform, so
+  true entropy is marginally lower. The gap shrinks as $L$ grows.
+- Guaranteeing class coverage trades a small amount of entropy for compliance
+  with composition rules. Uniform sampling without the constraint has higher
+  entropy but can occasionally omit a class.
+
+## 5. Unit Converter
+
+**Logic.** Normalise unit symbols to lowercase. Temperature is affine, not
+linear, so it is handled separately: convert to Celsius, then to the target.
+Length and mass are linear: store each unit's factor relative to a base unit and
+compute `value × factor[source] / factor[target]`, which handles every ordered
+pair, including inverses, from one table.
+
+**Data structures.** Two `dict[str, float]` factor tables and two
+`dict[str, Callable]` temperature maps.
+
+**Complexity.** Time $O(1)$, space $O(1)$. Strictly, the lookup scans a fixed
+number of tables, so cost is $O(T)$ in the number of tables — but $T$ is a compile-time
+constant, so this collapses to $O(1)$.
+
+**Precision.** The imperial factors (0.0254, 0.3048, 1609.344, 0.45359237,
+0.028349523125) are exact by international definition. Rounded constants such as
+`0.621371` introduce avoidable error and break round-trip consistency. Kelvin
+inputs below absolute zero are rejected.
+
+## 6. Rock–Paper–Scissors
+
+**Logic.** Normalise the input (accepting `r`/`p`/`s` aliases), sample the
+computer's choice uniformly, and resolve the outcome by checking whether
+`BEATS[player] == computer`. Track cumulative scores across rounds.
+
+**Data structures.** `BEATS: dict[str, str]`, a cyclic mapping from each choice to
+the one it defeats. This encodes the entire rule set in three entries and reduces
+outcome resolution to one comparison, replacing a three-clause boolean
+expression. `ALIASES: dict[str, str]` handles shorthand input. A
+`dict[str, int]` holds the score counters.
+
+**Complexity.**
+
+- Per round: time $O(1)$, space $O(1)$.
+- Session of $R$ rounds: time $O(R)$, space $O(1)$ — scores are three counters,
+  not a per-round history.
+
+**Note.** `random` is appropriate here. There is no adversarial requirement, and
+a CSPRNG would add cost without benefit. This is the opposite of the password
+generator's requirement, and the contrast is deliberate.
+
+## Limitations of this analysis
+
+Stated plainly, because Big-O tables can imply more rigour than they carry:
+
+1. **Most of these bounds are trivial.** Five of six programs are $O(1)$ or linear
+   in a small input. Asymptotic analysis is most informative when inputs grow
+   large; here it is a pedagogical exercise, not a performance investigation.
+2. **Constants and I/O dominate reality.** A single `input()` call costs vastly
+   more than every arithmetic operation in these scripts combined.
+3. **No benchmarks were run.** These are analytical claims derived from reading
+   the code, not measurements. If empirical numbers are needed, use `timeit` on
+   the pure functions with I/O removed.
+4. **Average-case dict assumptions.** All $O(1)$ hash claims degrade to $O(m)$
+   under pathological collisions. This is not a practical concern for these
+   fixed, small, non-adversarial key sets.

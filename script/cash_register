@@ -1,0 +1,93 @@
+from __future__ import annotations
+
+from decimal import Decimal, InvalidOperation
+
+# Prices in cents (USD).
+MENU: dict[str, int] = {
+    "coffee": 250,
+    "tea": 200,
+    "sandwich": 550,
+    "donut": 175,
+}
+
+
+def format_money(cents: int) -> str:
+    """Render non-negative cents as a currency string (exact, no float math)."""
+    return f"${Decimal(cents) / 100:,.2f}"
+
+
+def parse_money(text: str) -> int:
+    """Parse a user-entered amount such as '12.50' into cents."""
+    value = Decimal(text) * 100  # raises InvalidOperation on bad input
+    if value != value.to_integral_value():
+        raise ValueError("at most two decimal places are allowed")
+    if value < 0:
+        raise ValueError("amount cannot be negative")
+    return int(value)
+
+
+def add_item(cart: dict[str, int], name: str, qty: int) -> None:
+    """Add `qty` units of `name`, merging duplicate lines."""
+    if name not in MENU:
+        raise ValueError(f"{name!r} is not on the menu")
+    if qty <= 0:
+        raise ValueError("quantity must be a positive integer")
+    cart[name] = cart.get(name, 0) + qty
+
+
+def cart_total(cart: dict[str, int]) -> int:
+    """Total price of the cart in cents."""
+    return sum(MENU[name] * qty for name, qty in cart.items())
+
+
+def print_menu() -> None:
+    print("\nMenu:")
+    for name, cents in MENU.items():
+        print(f"  {name:<10}{format_money(cents):>9}")
+
+
+def main() -> None:
+    cart: dict[str, int] = {}
+    print("--- Cash Register ---")
+    print_menu()
+
+    while True:
+        name = input("\nItem name (or 'done' to check out): ").strip().lower()
+        if name in {"done", "quit", "exit"}:
+            break
+        if name not in MENU:
+            print("Unknown item. Available: " + ", ".join(MENU))
+            continue
+        try:
+            add_item(cart, name, int(input(f"Quantity of {name}: ").strip()))
+        except ValueError as exc:
+            print(f"Invalid input: {exc}")
+
+    if not cart:
+        print("Cart is empty. Nothing to charge.")
+        return
+
+    total = cart_total(cart)
+    print("\n--- Receipt ---")
+    for name, qty in cart.items():
+        print(f"{name:<10} x{qty:<3}{format_money(MENU[name] * qty):>9}")
+    print(f"{'TOTAL':<15}{format_money(total):>9}")
+
+    while True:
+        try:
+            paid = parse_money(input("Payment amount: ").strip())
+        except (InvalidOperation, ValueError):
+            print("Enter a valid amount, e.g. 12.50")
+            continue
+        if paid < total:
+            print(f"Insufficient payment. Still due: {format_money(total - paid)}")
+            continue
+        break
+
+    print(f"Paid:   {format_money(paid)}")
+    print(f"Change: {format_money(paid - total)}")
+if __name__ == "__main__":
+    try:
+        main()
+    except (KeyboardInterrupt, EOFError):
+        print("\nExiting.")
