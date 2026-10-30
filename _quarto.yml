@@ -1,0 +1,20 @@
+project:
+  type: website
+  output-dir: _site
+
+website:
+  title: "Python Mini Projects Collection"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Analysis
+      - href: https://github.com/<your-username>/python-mini-projects-collection
+        text: Source
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    highlight-style: github
